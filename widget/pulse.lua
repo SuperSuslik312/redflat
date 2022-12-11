@@ -54,9 +54,9 @@ local function get_default_sink(args)
 	args = args or {}
 	local type_ = args.type or "sink"
 
-	local cmd = string.format("pacmd dump | grep 'set-default-%s'", type_)
+	local cmd = string.format("pactl list short %ss | awk '{print $1}' | tail -1", type_)
 	local output = redutil.read.output(cmd)
-	local def_sink = string.match(output, "set%-default%-%w+%s(.+)\r?\n")
+	local def_sink = output
 
 	return def_sink
 end
@@ -70,12 +70,12 @@ function pulse:change_volume(args)
 	local diff = args.down and -args.step or args.step
 
 	-- get current volume
-	local v = redutil.read.output(string.format("pacmd dump | grep 'set-%s-volume %s'", self._type, self._sink))
-	local parsed = string.match(v, "0x%x+")
+	local v = redutil.read.output(string.format("pactl list %ss | grep 'Volume: front-left:' | tail -1 | awk '{print $3}'", self._type))
+	local parsed = v
 
 	-- catch possible problems with pacmd output
 	if not parsed then
-		naughty.notify({ title = "Warning!", text = "PA widget can't parse pacmd output" })
+		naughty.notify({ title = "Warning!", text = "PA widget can't parse pactl output" })
 		return
 	end
 
@@ -99,7 +99,7 @@ function pulse:change_volume(args)
 	end
 
 	-- set new volume
-	awful.spawn(string.format("pacmd set-%s-volume %s %s", self._type, self._sink, new_volume))
+	awful.spawn(string.format("pactl set-%s-volume %s %s", self._type, self._sink, new_volume))
 
 	-- update volume indicators
 	self:update_volume()
@@ -111,12 +111,12 @@ function pulse:mute()
 	--args = args or {}
 	if not self._type or not self._sink then return end
 
-	local mute = redutil.read.output(string.format("pacmd dump | grep 'set-%s-mute %s'", self._type, self._sink))
+	local mute = redutil.read.output(string.format("pactl list %ss | grep 'Mute:' | awk '{print $2}' | tail -1", self._type))
 
 	if string.find(mute, "no", -4) then
-		awful.spawn(string.format("pacmd set-%s-mute %s yes", self._type, self._sink))
+		awful.spawn(string.format("pactl set-%s-mute %s 1", self._type, self._sink))
 	else
-		awful.spawn(string.format("pacmd set-%s-mute %s no", self._type, self._sink))
+		awful.spawn(string.format("pactl set-%s-mute %s 0", self._type, self._sink))
 	end
 
 	self:update_volume()
@@ -136,11 +136,11 @@ function pulse:update_volume(args)
 	local volume = 0
 
 	-- get current volume and mute state
-	local v = redutil.read.output(string.format("pacmd dump | grep 'set-%s-volume %s'", self._type, self._sink))
-	local m = redutil.read.output(string.format("pacmd dump | grep 'set-%s-mute %s'", self._type, self._sink))
+	local v = redutil.read.output(string.format("pactl list %ss | grep 'Volume: front-left:' | tail -1 | awk '{print $3}'", self._type))
+	local m = redutil.read.output(string.format("pactl list %ss | grep 'Mute:' | awk '{print $2}' | tail -1", self._type))
 
 	if v then
-		local pv = string.match(v, "0x%x+")
+		local pv = v
 		if pv then volume = math.floor(tonumber(pv) * 100 / volmax + 0.5) end
 	end
 
